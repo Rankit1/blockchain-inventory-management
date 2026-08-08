@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["docType", "priorityTier"]
+  },
+  "name": "indexPriorityTier",
+  "type": "json"
+}

@@ -1,0 +1,14 @@
+# Local database storage
+data/
+
+# Binaries
+*.exe
+*.test
+bin/
+
+# Fabric local dynamic files
+network/crypto-config/
+network/channel-artifacts/
+network/system-genesis-block/
+*.block
+*.tar.gz

@@ -1,0 +1,7 @@
+{
+  "index": {
+    "fields": ["docType", "lifecycleState"]
+  },
+  "name": "indexLifecycle",
+  "type": "json"
+}

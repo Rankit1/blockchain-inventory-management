@@ -1,0 +1,16 @@
+OrdererOrgs:
+  - Name: Orderer
+    Domain: inventory.com
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: orderer
+
+PeerOrgs:
+  - Name: InventoryOrg
+    Domain: inventory.com
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: peer0.lab
+      - Hostname: peer0.admin
+      - Hostname: peer0.store
+      - Hostname: peer0.it
