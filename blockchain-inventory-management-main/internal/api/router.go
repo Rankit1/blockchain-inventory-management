@@ -1,6 +1,11 @@
 package api
 
 import (
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -11,6 +16,20 @@ func SetupRouter(h *Handlers) *chi.Mux {
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	// Enable CORS for frontend clients
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-User-Role")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// Health check route
 	r.Get("/healthz", h.Healthz)
@@ -51,6 +70,24 @@ func SetupRouter(h *Handlers) *chi.Mux {
 			r.Get("/verify", h.VerifyLedger)
 		})
 	})
+
+	// Serve frontend static files if built
+	distDir := "./frontend/dist"
+	if _, err := os.Stat(distDir); err == nil {
+		fs := http.FileServer(http.Dir(distDir))
+		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api") || strings.HasPrefix(r.URL.Path, "/healthz") {
+				http.NotFound(w, r)
+				return
+			}
+			filePath := filepath.Join(distDir, filepath.Clean(r.URL.Path))
+			if info, err := os.Stat(filePath); err != nil || info.IsDir() {
+				http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+				return
+			}
+			fs.ServeHTTP(w, r)
+		})
+	}
 
 	return r
 }

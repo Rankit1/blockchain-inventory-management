@@ -8,8 +8,7 @@ import (
 	"net/http"
 )
 
-// Gemini client placeholder (Google PaLM/ Gemini-ish). Real integration
-// requires proper endpoint and auth.
+// GeminiClient calls the real Google Generative Language API.
 type GeminiClient struct {
 	apiKey string
 }
@@ -19,13 +18,29 @@ func NewGemini(apiKey string) *GeminiClient {
 }
 
 func (g *GeminiClient) SummarizeDocument(text string) (string, error) {
-	reqBody := map[string]interface{}{"input": text}
+	return g.generateContent("Summarize the following document into a single short note:\n\n" + text)
+}
+
+func (g *GeminiClient) ScorePriority(assetName, category string) (PriorityScores, error) {
+	content, err := g.generateContent(priorityScorePrompt(assetName, category))
+	if err != nil {
+		return PriorityScores{}, err
+	}
+	return parsePriorityScores(content)
+}
+
+func (g *GeminiClient) generateContent(prompt string) (string, error) {
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"parts": []map[string]string{{"text": prompt}}},
+		},
+	}
 	b, _ := json.Marshal(reqBody)
-	req, err := http.NewRequest("POST", "https://gemini.api.google/v1/generate", bytes.NewReader(b))
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + g.apiKey
+	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+g.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -33,10 +48,24 @@ func (g *GeminiClient) SummarizeDocument(text string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
 		return "", fmt.Errorf("gemini error: %s", string(body))
 	}
-	body, _ := ioutil.ReadAll(resp.Body)
-	return string(body), nil
+	var out struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", fmt.Errorf("failed to parse gemini response: %w", err)
+	}
+	if len(out.Candidates) == 0 || len(out.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("gemini returned no content")
+	}
+	return out.Candidates[0].Content.Parts[0].Text, nil
 }

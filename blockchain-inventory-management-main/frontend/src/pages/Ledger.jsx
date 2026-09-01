@@ -36,7 +36,7 @@ export default function Ledger() {
       <PageHead
         eyebrow="Ledger · /api/ledger/blocks, /verify"
         title="Chain inspection"
-        desc="Stored blockchain blocks in simulation mode, and a live integrity check across the chain."
+        desc="Fabric ledger blocks and a live integrity check across the chain."
       />
       <Notice kind="err">{error}</Notice>
 

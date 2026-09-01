@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"inventory-chain/internal/chaincode"
+	"inventory-chain/internal/genai"
 )
 
 type stubBlockchainClient struct {
@@ -59,7 +59,7 @@ func (s *stubBlockchainClient) VerifyLedger() (bool, *int, error) {
 	return true, nil, nil
 }
 
-func (s *stubBlockchainClient) ClassifyPriority(assetID string, scores chaincode.PriorityScores) (string, string, float64, error) {
+func (s *stubBlockchainClient) ClassifyPriority(assetID string, scores genai.PriorityScores) (string, string, float64, error) {
 	return "", "", 0, nil
 }
 

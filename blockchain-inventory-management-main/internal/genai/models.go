@@ -5,9 +5,14 @@ type OCRModel interface {
 	ExtractWarrantyAndAMC(doc []byte) (warranty string, amc string, err error)
 }
 
-// LLMModel provides lightweight text enrichment for classification notes.
+// LLMModel provides lightweight text enrichment for classification notes and
+// asset priority scoring.
 type LLMModel interface {
 	SummarizeDocument(text string) (summary string, err error)
+	// ScorePriority asks the model to rate an asset 1-5 on each of the five
+	// priority criteria (business criticality, replacement cost/lead time,
+	// safety/compliance impact, redundancy) based on its name and category.
+	ScorePriority(assetName, category string) (PriorityScores, error)
 }
 
 // ModelProvider groups available models for agents.

@@ -44,7 +44,7 @@ export default function Dashboard() {
       <PageHead
         eyebrow="Overview"
         title="Ledger status"
-        desc="Live snapshot of assets, priority exposure, and chain integrity across simulation or Fabric mode."
+        desc="Live snapshot of assets, priority exposure, and chain integrity on the Fabric network."
       />
       <Notice kind="err">{error}</Notice>
 

@@ -59,7 +59,7 @@ export default function App() {
           </div>
         ))}
         <div className="sidebar-foot">
-          Simulation / Fabric hybrid ledger.<br />Port 8080.
+          Hyperledger Fabric ledger.<br />Port 8080.
         </div>
       </aside>
 

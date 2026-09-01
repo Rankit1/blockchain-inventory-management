@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"inventory-chain/internal/worldstate"
+	"inventory-chain/internal/fabricclient"
 )
 
 // PredictiveAgent runs lightweight predictive maintenance checks and schedules
@@ -29,6 +29,7 @@ func (p *PredictiveAgent) Start() {
 		return
 	}
 	p.stop = make(chan struct{})
+	stop := p.stop
 	p.wg.Add(1)
 	p.mu.Unlock()
 	go func() {
@@ -38,7 +39,7 @@ func (p *PredictiveAgent) Start() {
 		log.Println("PredictiveAgent: started")
 		for {
 			select {
-			case <-p.stop:
+			case <-stop:
 				log.Println("PredictiveAgent: stopping")
 				return
 			case <-ticker.C:
@@ -67,7 +68,7 @@ func (p *PredictiveAgent) scan() {
 		return
 	}
 	for _, a := range assets {
-		if a.LifecycleState == worldstate.LifecycleRetired {
+		if a.LifecycleState == LifecycleRetired {
 			continue
 		}
 		// Simple heuristic: schedule audit for P1 assets with no lastAuditDate
@@ -77,7 +78,7 @@ func (p *PredictiveAgent) scan() {
 	}
 }
 
-func (p *PredictiveAgent) scheduleAudit(a worldstate.Asset) {
+func (p *PredictiveAgent) scheduleAudit(a fabricclient.Asset) {
 	// Create an audit date for tomorrow
 	auditDate := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
 	txID, err := p.Driver.ScheduleAudit(a.AssetID, auditDate, "predictive-maintenance")

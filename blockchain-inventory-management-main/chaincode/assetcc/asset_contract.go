@@ -22,19 +22,19 @@ type Asset struct {
 	Category         string    `json:"category"`
 	Qty              int       `json:"qty"`
 	Threshold        int       `json:"threshold"`
-	PriorityTier     string    `json:"priorityTier,omitempty"`
-	CriticalityScore float64   `json:"criticalityScore,omitempty"`
-	LifecycleState   string    `json:"lifecycleState,omitempty"`
-	LastAuditDate    string    `json:"lastAuditDate,omitempty"`
-	UtilizationRate  float64   `json:"utilizationRate,omitempty"`
-	WarrantyExpiry   string    `json:"warrantyExpiry,omitempty"`
-	AMCExpiry        string    `json:"amcExpiry,omitempty"`
+	PriorityTier     string    `json:"priorityTier,omitempty" metadata:",optional"`
+	CriticalityScore float64   `json:"criticalityScore,omitempty" metadata:",optional"`
+	LifecycleState   string    `json:"lifecycleState,omitempty" metadata:",optional"`
+	LastAuditDate    string    `json:"lastAuditDate,omitempty" metadata:",optional"`
+	UtilizationRate  float64   `json:"utilizationRate,omitempty" metadata:",optional"`
+	WarrantyExpiry   string    `json:"warrantyExpiry,omitempty" metadata:",optional"`
+	AMCExpiry        string    `json:"amcExpiry,omitempty" metadata:",optional"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type HistoryEntry struct {
 	TxID      string    `json:"txId"`
-	Value     *Asset    `json:"value"`
+	Value     *Asset    `json:"value,omitempty" metadata:",optional"`
 	Timestamp time.Time `json:"timestamp"`
 	IsDelete  bool      `json:"isDelete"`
 }
@@ -216,14 +216,21 @@ func (c *AssetContract) TransferAsset(ctx contractapi.TransactionContextInterfac
 	// Create new asset copy in destination department
 	newDestAssetID := fmt.Sprintf("asset-%s", ctx.GetStub().GetTxID()[:8]) // unique ID prefix
 	newDestAsset := Asset{
-		DocType:   "asset",
-		AssetID:   newDestAssetID,
-		DeptID:    toDept,
-		Name:      srcAsset.Name,
-		Category:  srcAsset.Category,
-		Qty:       qty,
-		Threshold: srcAsset.Threshold,
-		UpdatedAt: srcAsset.UpdatedAt,
+		DocType:          "asset",
+		AssetID:          newDestAssetID,
+		DeptID:           toDept,
+		Name:             srcAsset.Name,
+		Category:         srcAsset.Category,
+		Qty:              qty,
+		Threshold:        srcAsset.Threshold,
+		PriorityTier:     srcAsset.PriorityTier,
+		CriticalityScore: srcAsset.CriticalityScore,
+		LifecycleState:   srcAsset.LifecycleState,
+		LastAuditDate:    srcAsset.LastAuditDate,
+		UtilizationRate:  srcAsset.UtilizationRate,
+		WarrantyExpiry:   srcAsset.WarrantyExpiry,
+		AMCExpiry:        srcAsset.AMCExpiry,
+		UpdatedAt:        srcAsset.UpdatedAt,
 	}
 	newDestBytes, _ := json.Marshal(newDestAsset)
 	return ctx.GetStub().PutState(newDestAssetID, newDestBytes)

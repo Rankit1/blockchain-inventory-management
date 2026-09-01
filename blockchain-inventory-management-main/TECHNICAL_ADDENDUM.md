@@ -332,14 +332,14 @@ capability depends on an accurate priority tier for every asset.
 
 The following are implemented as of this addendum's code delivery (Phase 3a foundation):
 
-- Asset data model extended with priority/lifecycle fields (simulation world state + Fabric
-  chaincode + REST client DTOs).
+- Asset data model extended with priority/lifecycle fields (Fabric chaincode + REST client DTOs).
 - `ClassifyPriority`, `UpdatePriorityTier`, `ScheduleAudit`, `RecordAuditResult`, `RetireAsset`
-  implemented in both the in-process simulation chaincode and the Fabric `assetcc` contract.
-- New transaction types (`PRIORITY_CLASSIFY`, `PRIORITY_UPDATE`, `AUDIT_SCHEDULE`,
-  `AUDIT_RESULT`, `RETIRE`) endorsed and committed by the simulated peers/orderer.
+  implemented in the Fabric `assetcc` contract, submitted via the Fabric Gateway SDK.
+- `GenAIService` scores the five priority criteria via a real LLM call (OpenAI/Gemini/Mistral),
+  falling back to a deterministic heuristic when no provider is configured.
 - REST endpoints and RBAC middleware added.
 - CouchDB index documents added for `priorityTier`, `lifecycleState`, and `lastAuditDate`.
 
-Items dependent on paid/cloud services (Vision/OCR, LSTM predictive maintenance, Vector DB,
-conversational LLM hosting, Kafka consumers) are intentionally **not** implemented in code.
+Items dependent on paid/cloud services (Vision-LLM photo audits, LSTM predictive maintenance,
+Vector DB, conversational tool-calling LLM, Kafka consumers) are intentionally **not**
+implemented in code.

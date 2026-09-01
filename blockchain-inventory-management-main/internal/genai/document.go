@@ -5,14 +5,12 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"inventory-chain/internal/chaincode"
-	"inventory-chain/internal/worldstate"
 )
 
-// DocumentAgent simulates document intelligence that extracts warranty/AMC
-// metadata from uploaded invoices and enriches the asset record via an
-// audit note and a re-classification.
+// DocumentAgent extracts warranty/AMC metadata from uploaded invoices via the
+// configured OCR/LLM providers and enriches the asset record via an audit
+// note and a re-classification. No document upload pipeline exists yet, so
+// it invokes OCR with no document bytes until one is wired up.
 type DocumentAgent struct {
 	Driver AutomationDriver
 	Models *ModelProvider
@@ -33,6 +31,7 @@ func (d *DocumentAgent) Start() {
 		return
 	}
 	d.stop = make(chan struct{})
+	stop := d.stop
 	d.wg.Add(1)
 	d.mu.Unlock()
 	go func() {
@@ -42,7 +41,7 @@ func (d *DocumentAgent) Start() {
 		log.Println("DocumentAgent: started")
 		for {
 			select {
-			case <-d.stop:
+			case <-stop:
 				log.Println("DocumentAgent: stopping")
 				return
 			case <-ticker.C:
@@ -71,7 +70,7 @@ func (d *DocumentAgent) scan() {
 		return
 	}
 	for _, a := range assets {
-		if a.LifecycleState == worldstate.LifecycleRetired {
+		if a.LifecycleState == LifecycleRetired {
 			continue
 		}
 		// Process each asset once per agent lifetime after the document extraction
@@ -99,7 +98,7 @@ func (d *DocumentAgent) scan() {
 				log.Printf("DocumentAgent: failed to attach warranty for %s: %v", a.AssetID, err)
 			}
 			// Optionally use LLM to summarize and enrich reclassification notes
-			scores := chaincode.DefaultScores(a.Category)
+			scores := scorePriority(a.Name, a.Category)
 			mp2 := d.Models
 			if mp2 == nil {
 				mp2 = GetGlobalModelProvider()

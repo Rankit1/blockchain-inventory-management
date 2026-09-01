@@ -4,11 +4,14 @@ set -e
 # Prevent Git Bash from converting path arguments to Windows format on docker commands
 export MSYS_NO_PATHCONV=1
 
+VERSION=${1:-"1.0"}
+SEQUENCE=${2:-"1"}
+
 CDIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$CDIR/.."
 
 echo "========================================================="
-echo "Packaging and Deploying assetcc Go Chaincode"
+echo "Packaging and Deploying assetcc Go Chaincode (Version: $VERSION, Sequence: $SEQUENCE)"
 echo "========================================================="
 
 # 1. Package the chaincode
@@ -16,7 +19,7 @@ echo "Packaging chaincode..."
 docker exec cli peer lifecycle chaincode package assetcc.tar.gz \
   --path /opt/gopath/src/github.com/hyperledger/fabric/peer/chaincode/assetcc \
   --lang golang \
-  --label assetcc_1.0
+  --label "assetcc_${VERSION}"
 
 # 2. Install on Lab peer
 echo "Installing on peer0.lab..."
@@ -54,9 +57,9 @@ docker exec cli peer lifecycle chaincode approveformyorg \
   -o orderer.inventory.com:7050 \
   --channelID inventorychannel \
   --name assetcc \
-  --version 1.0 \
+  --version "$VERSION" \
   --package-id "$PACKAGE_ID" \
-  --sequence 1 \
+  --sequence "$SEQUENCE" \
   --tls \
   --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/inventory.com/orderers/orderer.inventory.com/tls/ca.crt
 
@@ -66,8 +69,8 @@ docker exec cli peer lifecycle chaincode commit \
   -o orderer.inventory.com:7050 \
   --channelID inventorychannel \
   --name assetcc \
-  --version 1.0 \
-  --sequence 1 \
+  --version "$VERSION" \
+  --sequence "$SEQUENCE" \
   --tls \
   --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/inventory.com/orderers/orderer.inventory.com/tls/ca.crt \
   --peerAddresses peer0.lab.inventory.com:7051 \

@@ -3,7 +3,7 @@ import { api } from '../api/client.js';
 import { useRole } from '../api/RoleContext.jsx';
 import { PageHead, Notice, Field } from '../components/UI.jsx';
 
-const initial = { name: '', deptId: '', quantity: '', replacementCost: '', leadTime: '', safetyCompliance: false };
+const initial = { name: '', deptId: '', category: 'server', quantity: '', threshold: '2', replacementCost: '', leadTime: '', safetyCompliance: false };
 
 export default function IssueAsset() {
   const { role } = useRole();
@@ -21,13 +21,15 @@ export default function IssueAsset() {
       const payload = {
         name: form.name,
         deptId: form.deptId,
-        quantity: Number(form.quantity) || 0,
+        category: form.category,
+        qty: Number(form.quantity) || 0,
+        threshold: Number(form.threshold) || 2,
         replacementCost: Number(form.replacementCost) || 0,
         leadTime: Number(form.leadTime) || 0,
         safetyCompliance: form.safetyCompliance
       };
       const res = await api.issueAsset(payload, role);
-      setNotice(`Issued: ${res?.id || res?.assetId || 'success'}`);
+      setNotice(`Issued: ${res?.assetID || res?.assetId || res?.id || 'success'}`);
       setForm(initial);
     } catch (e2) {
       setError(e2.message);
@@ -51,22 +53,23 @@ export default function IssueAsset() {
           <input required value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Infusion pump" />
         </Field>
         <Field label="Department ID">
-          <input required value={form.deptId} onChange={(e) => set('deptId', e.target.value)} placeholder="e.g. RADIOLOGY" />
+          <input required value={form.deptId} onChange={(e) => set('deptId', e.target.value)} placeholder="e.g. Lab" />
+        </Field>
+        <Field label="Category">
+          <select value={form.category} onChange={(e) => set('category', e.target.value)}>
+            <option value="server">Server</option>
+            <option value="network">Network Device</option>
+            <option value="diagnostic">Diagnostic / Medical Equipment</option>
+            <option value="laptop">Laptop / Computer</option>
+            <option value="storage">Storage / Infrastructure</option>
+            <option value="general">General Asset</option>
+          </select>
         </Field>
         <Field label="Quantity">
           <input required type="number" min="0" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} />
         </Field>
-        <Field label="Replacement cost">
-          <input type="number" min="0" value={form.replacementCost} onChange={(e) => set('replacementCost', e.target.value)} />
-        </Field>
-        <Field label="Lead time (days)">
-          <input type="number" min="0" value={form.leadTime} onChange={(e) => set('leadTime', e.target.value)} />
-        </Field>
-        <Field label="Safety compliance">
-          <select value={String(form.safetyCompliance)} onChange={(e) => set('safetyCompliance', e.target.value === 'true')}>
-            <option value="false">Not required</option>
-            <option value="true">Required</option>
-          </select>
+        <Field label="Replenishment Threshold">
+          <input required type="number" min="1" value={form.threshold} onChange={(e) => set('threshold', e.target.value)} />
         </Field>
         <button className="btn" disabled={busy} type="submit">{busy ? 'Issuing…' : 'Issue asset'}</button>
       </form>

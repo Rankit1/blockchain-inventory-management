@@ -5,8 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"inventory-chain/internal/chaincode"
-	"inventory-chain/internal/worldstate"
+	"inventory-chain/internal/fabricclient"
 )
 
 // GenAIService is a lightweight automation layer that scans assets via an
@@ -33,6 +32,7 @@ func (g *GenAIService) Start() {
 		return
 	}
 	g.stop = make(chan struct{})
+	stop := g.stop
 	g.wg.Add(1)
 	g.mu.Unlock()
 	go func() {
@@ -42,7 +42,7 @@ func (g *GenAIService) Start() {
 		log.Println("GenAIService: started classification scanner")
 		for {
 			select {
-			case <-g.stop:
+			case <-stop:
 				log.Println("GenAIService: stopping")
 				return
 			case <-ticker.C:
@@ -76,7 +76,7 @@ func (g *GenAIService) scanAndClassify() {
 	now := time.Now().UTC()
 	for _, a := range assets {
 		// Skip retired assets
-		if a.LifecycleState == worldstate.LifecycleRetired {
+		if a.LifecycleState == LifecycleRetired {
 			continue
 		}
 		needs := false
@@ -92,22 +92,30 @@ func (g *GenAIService) scanAndClassify() {
 	}
 }
 
-// classify runs the lightweight (stub) GenAI classifier via the AutomationDriver.
-func (g *GenAIService) classify(a worldstate.Asset) {
-	// For now we use the heuristic defaultScores from chaincode as a stand-in
-	// for an AI model. This keeps behavior deterministic and testable.
-	scores := chaincode.DefaultScores(a.Category)
+// classify asks the configured LLM to rate the asset on the five priority
+// criteria, falling back to a deterministic heuristic if no LLM is configured
+// or the call fails, then submits the result via the AutomationDriver.
+func (g *GenAIService) classify(a fabricclient.Asset) {
+	scores := scorePriority(a.Name, a.Category)
 
-	txID, tier, score, err := g.Driver.ClassifyPriority(a.AssetID, chaincode.PriorityScores{
-		BusinessCriticality:    scores.BusinessCriticality,
-		ReplacementCost:        scores.ReplacementCost,
-		ReplacementLeadTime:    scores.ReplacementLeadTime,
-		SafetyComplianceImpact: scores.SafetyComplianceImpact,
-		RedundancyAvailability: scores.RedundancyAvailability,
-	})
+	txID, tier, score, err := g.Driver.ClassifyPriority(a.AssetID, scores)
 	if err != nil {
 		log.Printf("GenAIService: classification failed for %s: %v", a.AssetID, err)
 		return
 	}
 	log.Printf("GenAIService: classified asset %s -> tx %s (tier=%s score=%.2f)", a.AssetID, txID, tier, score)
+}
+
+// scorePriority runs the priority classification LLM call, falling back to a
+// deterministic heuristic if no LLM is configured or the call errors.
+func scorePriority(assetName, category string) PriorityScores {
+	mp := GetGlobalModelProvider()
+	if mp != nil && mp.LLM != nil {
+		if scores, err := mp.LLM.ScorePriority(assetName, category); err == nil {
+			return scores
+		} else {
+			log.Printf("GenAIService: LLM scoring failed, falling back to heuristic: %v", err)
+		}
+	}
+	return heuristicScores(category)
 }

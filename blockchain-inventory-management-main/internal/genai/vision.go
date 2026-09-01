@@ -4,12 +4,12 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"inventory-chain/internal/worldstate"
 )
 
-// VisionAgent simulates an AI-assisted physical audit using images.
-// It marks assets as audited when a visual check is missing.
+// VisionAgent periodically records an audit pass for assets missing one.
+// No photo upload pipeline exists yet, so it cannot run vision-LLM matching
+// against a real image; it enriches the audit note via the configured OCR
+// provider when one is available.
 type VisionAgent struct {
 	Driver AutomationDriver
 	Models *ModelProvider
@@ -30,6 +30,7 @@ func (v *VisionAgent) Start() {
 		return
 	}
 	v.stop = make(chan struct{})
+	stop := v.stop
 	v.wg.Add(1)
 	v.mu.Unlock()
 	go func() {
@@ -39,7 +40,7 @@ func (v *VisionAgent) Start() {
 		log.Println("VisionAgent: started")
 		for {
 			select {
-			case <-v.stop:
+			case <-stop:
 				log.Println("VisionAgent: stopping")
 				return
 			case <-ticker.C:
@@ -69,7 +70,7 @@ func (v *VisionAgent) scan() {
 	}
 	now := time.Now().UTC().Format("2006-01-02")
 	for _, a := range assets {
-		if a.LifecycleState == worldstate.LifecycleRetired {
+		if a.LifecycleState == LifecycleRetired {
 			continue
 		}
 		// If asset has no last audit, assume a vision check found it present

@@ -1,9 +1,6 @@
 # Hybrid Cloud–Blockchain Inventory Management — Go Prototype & Hyperledger Fabric
 
-This repository is a hybrid inventory management solution implemented in Go, supporting both:
-
-- a self-contained local blockchain simulation mode with persistent `bbolt` storage, and
-- a real Hyperledger Fabric integration mode using the Fabric Gateway SDK.
+This repository is an inventory management solution implemented in Go on top of a real Hyperledger Fabric v2.5 network, connected via the Fabric Gateway SDK.
 
 The system tracks multi-department assets, manages stock transactions, computes priority tiers, records audit lifecycle events, and supports runtime GenAI automation agents for classification, predictive audits, vision checks, and document intelligence.
 
@@ -11,20 +8,18 @@ The system tracks multi-department assets, manages stock transactions, computes 
 
 ## What the Project Does Today
 
-This project now implements:
+This project implements:
 
-- Asset issue/consume/transfer workflows with blockchain-style transaction recording.
-- Persistent simulated ledger + world state using `bbolt` in `data/inventory.db`.
-- Fabric integration mode that connects to a real Fabric peer and submits transactions through `fabricclient`.
-- Asset priority scoring and tier classification based on business criticality, replacement cost, lead time, safety compliance, and redundancy availability.
+- Asset issue/consume/transfer workflows submitted as Fabric chaincode transactions.
+- Asset priority scoring and tier classification based on business criticality, replacement cost, lead time, safety compliance, and redundancy availability — scored by an LLM (OpenAI/Gemini/Mistral) with a deterministic heuristic fallback when no provider is configured.
 - Manual priority override with justification.
 - Audit scheduling and audit result recording flows.
 - Asset retirement tracking.
 - Runtime GenAI automation for:
-  - automatic priority classification (`GenAIService`),
+  - automatic priority classification (`GenAIService`), backed by a real LLM call,
   - predictive audit scheduling for P1 assets (`PredictiveAgent`),
-  - simulated vision audits (`VisionAgent`),
-  - simulated document extraction and warranty enrichment (`DocumentAgent`).
+  - periodic audit-heartbeat checks (`VisionAgent`) — enriched via OCR when a provider is configured; a real photo-upload pipeline is not wired up yet,
+  - document metadata extraction (`DocumentAgent`) via the configured OCR/LLM providers; a real document-upload pipeline is not wired up yet.
 - Runtime admin control over agent enable/disable and provider model selection via `/api/admin/agents/control`.
 - A web API server on port `8080` and an optional interactive CLI client in `cmd/client`.
 
@@ -32,26 +27,13 @@ This project now implements:
 
 ## How to Run
 
-### Simulation Mode
-
-This is the default mode if `RUN_MODE` is unset or if Fabric connection fails.
+This application requires a running Hyperledger Fabric network (see `network/`) with the `assetcc` chaincode deployed to the `inventorychannel` channel.
 
 ```bash
-# Run the API server in local simulation mode
-go run .
+FABRIC_CRYPTO_DIR=./network/crypto-config FABRIC_PEER_ADDRESS=localhost:7051 FABRIC_PEER_NAME=peer0.lab.inventory.com go run .
 ```
 
-The local simulation stores data in `./data/inventory.db`.
-
-### Fabric Mode
-
-Set the runtime mode to Fabric and provide peer connection details:
-
-```bash
-RUN_MODE=fabric FABRIC_CRYPTO_DIR=./network/crypto-config FABRIC_PEER_ADDRESS=localhost:7051 FABRIC_PEER_NAME=peer0.lab.inventory.com go run .
-```
-
-If Fabric is not available, the code automatically falls back to simulation mode.
+If `FABRIC_CRYPTO_DIR`/`FABRIC_PEER_ADDRESS`/`FABRIC_PEER_NAME` are unset, they default to `./network/crypto-config`, `localhost:7051`, and `peer0.lab.inventory.com` respectively. The server exits at startup if it cannot connect to the peer.
 
 ### Model and Agent Configuration
 
@@ -61,6 +43,8 @@ If Fabric is not available, the code automatically falls back to simulation mode
 - `LLM_PROVIDER=openai|mistral|gemini|dummy`
 - `OPENAI_API_KEY`, `MISTRAL_API_KEY`, `GEMINI_API_KEY`
 - `AZURE_OCR_ENDPOINT`, `AZURE_OCR_KEY`
+
+Without a real `LLM_PROVIDER`/API key configured, priority classification falls back to a deterministic category-based heuristic instead of an LLM call.
 
 ---
 
@@ -123,9 +107,9 @@ If Fabric is not available, the code automatically falls back to simulation mode
 
 ### Ledger Inspection
 - `GET /api/ledger/blocks`
-  - Returns stored blockchain blocks in simulation mode.
+  - Returns raw ledger blocks (not yet wired to Fabric's qscc query; returns empty).
 - `GET /api/ledger/verify`
-  - Verifies ledger chain integrity.
+  - Verifies ledger chain integrity (Fabric's consensus already guarantees this; returns `true`).
 
 ---
 
@@ -133,8 +117,7 @@ If Fabric is not available, the code automatically falls back to simulation mode
 
 ### Root
 - `main.go`
-  - Application entrypoint.
-  - Chooses Fabric or simulation mode, starts GenAI agents, registers runtime manager, and launches the HTTP server.
+  - Application entrypoint. Connects to the Fabric Gateway, starts GenAI agents, registers the runtime manager, and launches the HTTP server.
 - `go.mod`, `go.sum`
   - Go module and dependency management.
 - `README.md`
@@ -152,8 +135,7 @@ If Fabric is not available, the code automatically falls back to simulation mode
 - `handlers.go`
   - Implements each REST API endpoint and request/response payloads.
 - `client.go`
-  - Blockchain client abstraction used by the API handlers.
-  - Provides both `FabricAdapter` and `SimulationAdapter` implementations.
+  - `FabricAdapter`: the `BlockchainClient` implementation that wraps the Fabric Gateway SDK.
 - `admin.go`
   - Admin endpoint that toggles runtime GenAI agents and updates model providers.
 - `rbac.go`
@@ -161,18 +143,21 @@ If Fabric is not available, the code automatically falls back to simulation mode
 
 ### `internal/genai`
 - `adapter.go`
-  - Defines `AutomationDriver` for both simulated and Fabric-backed automation.
-  - `SimulationDriver` and `FabricDriver` bridge agent actions to underlying transaction submission.
+  - Defines `AutomationDriver` and `FabricDriver`, bridging agent actions to Fabric transaction submission.
 - `genai.go`
-  - `GenAIService` scans assets and auto-classifies missing or stale priority tiers.
+  - `GenAIService` scans assets and auto-classifies missing or stale priority tiers using an LLM call (with heuristic fallback).
 - `predictive.go`
   - `PredictiveAgent` schedules audits for high-priority assets with missing audit history.
 - `vision.go`
-  - `VisionAgent` simulates visual asset auditing and records audit results.
+  - `VisionAgent` runs a periodic audit heartbeat and records audit results.
 - `document.go`
-  - `DocumentAgent` simulates document intelligence, attaches warranty/A MC notes, and triggers reclassification.
+  - `DocumentAgent` extracts warranty/AMC notes via OCR/LLM and triggers reclassification.
 - `manager.go`
   - Global runtime manager for enabling/disabling agents and updating active model providers.
+- `priority.go`
+  - `PriorityScores` type, asset lifecycle constants, and the deterministic heuristic fallback scorer.
+- `llm_common.go`
+  - Shared LLM prompt and JSON-response parsing used by all providers.
 - `models_env.go`
   - Env-driven model provider selection for OCR and LLM adapters.
 - `models.go`
@@ -180,22 +165,9 @@ If Fabric is not available, the code automatically falls back to simulation mode
 - `models_stub.go`
   - Dummy OCR/LLM implementations used when real providers are not configured.
 - `llm_openai.go`, `llm_mistral.go`, `llm_gemini.go`
-  - LLM adapter stubs for provider support.
+  - Real LLM adapters (OpenAI Chat Completions, Mistral Chat Completions, Google Generative Language API) for document summarization and priority scoring.
 - `ocr_azure.go`, `ocr_tesseract.go`
-  - OCR adapter stubs for Azure and Tesseract.
-
-### `internal/network`
-- `network.go`
-  - Builds the in-memory blockchain network, the simulated orderer, and peer endorsements.
-  - Implements `ProposeAndCommit` to simulate endorsement, ordering, and state updates.
-
-### `internal/ledger`
-- `ledger.go`
-  - `Ledger` persistence over `bbolt`, block append, chain retrieval, integrity verification, and history scan.
-
-### `internal/worldstate`
-- `store.go`
-  - `worldstate.Store` persistence for asset records and list/query operations.
+  - OCR adapters for Azure Computer Vision Read API and local Tesseract.
 
 ### `internal/fabricclient`
 - `client.go`
@@ -225,9 +197,8 @@ If Fabric is not available, the code automatically falls back to simulation mode
 
 ## Current Behavior Summary
 
-- Simulation mode is fully functional and persists state locally.
-- Fabric mode is wired to the Gateway SDK and can operate against a real Fabric peer.
-- GenAI automation is available both in simulation and Fabric mode, with runtime toggles and model provider selection.
+- Fabric mode is the only runtime mode; the server requires a live Fabric peer to connect at startup.
+- Priority classification calls a real LLM provider (OpenAI/Mistral/Gemini) when configured, falling back to a deterministic heuristic otherwise.
 - The CLI client exercises the same HTTP API as the web server.
 - RBAC is enforced by `X-User-Role` headers for protected endpoints.
 
@@ -235,5 +206,4 @@ If Fabric is not available, the code automatically falls back to simulation mode
 
 - The assistant queries are currently a stub and return guidance rather than a production conversational AI answer.
 - Real OCR/LLM provider support depends on valid provider credentials and environment configuration.
-- The simulated agents use local heuristics and dummy model adapters for deterministic behavior.
-
+- The Vision and Document agents call the configured OCR provider, but no photo/document upload endpoint exists yet, so they run without real image/document bytes until that pipeline is built.

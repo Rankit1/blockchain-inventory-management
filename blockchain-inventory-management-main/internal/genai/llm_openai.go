@@ -17,6 +17,18 @@ func NewOpenAI(apiKey string) *OpenAIClient {
 }
 
 func (o *OpenAIClient) SummarizeDocument(text string) (string, error) {
+	return o.chatCompletion("You summarize documents into a single short note.", text)
+}
+
+func (o *OpenAIClient) ScorePriority(assetName, category string) (PriorityScores, error) {
+	content, err := o.chatCompletion("You are an enterprise asset management classifier. Respond with JSON only.", priorityScorePrompt(assetName, category))
+	if err != nil {
+		return PriorityScores{}, err
+	}
+	return parsePriorityScores(content)
+}
+
+func (o *OpenAIClient) chatCompletion(systemPrompt, userPrompt string) (string, error) {
 	type Choice struct {
 		Message struct {
 			Role    string `json:"role"`
@@ -26,10 +38,10 @@ func (o *OpenAIClient) SummarizeDocument(text string) (string, error) {
 	reqBody := map[string]interface{}{
 		"model": "gpt-3.5-turbo",
 		"messages": []map[string]string{
-			{"role": "system", "content": "You summarize documents into a single short note."},
-			{"role": "user", "content": text},
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userPrompt},
 		},
-		"max_tokens": 120,
+		"max_tokens": 200,
 	}
 	b, _ := json.Marshal(reqBody)
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(b))

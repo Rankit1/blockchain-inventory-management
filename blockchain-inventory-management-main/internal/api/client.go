@@ -1,19 +1,16 @@
 package api
 
 import (
-	"encoding/json"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
-	"inventory-chain/internal/chaincode"
 	"inventory-chain/internal/fabricclient"
-	"inventory-chain/internal/network"
-	"inventory-chain/internal/worldstate"
+	"inventory-chain/internal/genai"
 )
 
-// ClientAsset matches the structure of worldstate.Asset and fabricclient.Asset.
+// ClientAsset matches the structure of fabricclient.Asset.
 type ClientAsset struct {
 	AssetID          string    `json:"assetId"`
 	DeptID           string    `json:"deptId"`
@@ -37,26 +34,6 @@ type ClientHistoryEntry struct {
 	Value     *ClientAsset `json:"value"`
 	Timestamp time.Time    `json:"timestamp"`
 	IsDelete  bool         `json:"isDelete"`
-}
-
-// toClientAsset converts a worldstate.Asset (simulation) to a ClientAsset.
-func toClientAsset(a worldstate.Asset) *ClientAsset {
-	return &ClientAsset{
-		AssetID:          a.AssetID,
-		DeptID:           a.DeptID,
-		Name:             a.Name,
-		Category:         a.Category,
-		Qty:              a.Qty,
-		Threshold:        a.Threshold,
-		PriorityTier:     a.PriorityTier,
-		CriticalityScore: a.CriticalityScore,
-		LifecycleState:   a.LifecycleState,
-		LastAuditDate:    a.LastAuditDate,
-		UtilizationRate:  a.UtilizationRate,
-		WarrantyExpiry:   a.WarrantyExpiry,
-		AMCExpiry:        a.AMCExpiry,
-		UpdatedAt:        a.UpdatedAt,
-	}
 }
 
 // toClientAssetFabric converts a fabricclient.Asset to a ClientAsset.
@@ -92,7 +69,7 @@ type BlockchainClient interface {
 	VerifyLedger() (bool, *int, error)
 
 	// GenAI-augmented asset prioritization & automation
-	ClassifyPriority(assetID string, scores chaincode.PriorityScores) (txID string, tier string, score float64, err error)
+	ClassifyPriority(assetID string, scores genai.PriorityScores) (txID string, tier string, score float64, err error)
 	UpdatePriorityTier(assetID, tier, reason string) (txID string, err error)
 	ScheduleAudit(assetID, auditDate, scope string) (txID string, err error)
 	RecordAuditResult(assetID, auditDate, result, notes string) (txID string, err error)
@@ -176,7 +153,7 @@ func (fa *FabricAdapter) VerifyLedger() (bool, *int, error) {
 	return true, nil, nil
 }
 
-func (fa *FabricAdapter) ClassifyPriority(assetID string, scores chaincode.PriorityScores) (string, string, float64, error) {
+func (fa *FabricAdapter) ClassifyPriority(assetID string, scores genai.PriorityScores) (string, string, float64, error) {
 	return fa.client.ClassifyPriority(assetID, scores.BusinessCriticality, scores.ReplacementCost, scores.ReplacementLeadTime, scores.SafetyComplianceImpact, scores.RedundancyAvailability)
 }
 
@@ -197,7 +174,20 @@ func (fa *FabricAdapter) RetireAsset(assetID, reason string) (string, error) {
 }
 
 func (fa *FabricAdapter) AssistantQuery(userQuery string) (string, error) {
-	return "assistant functionality is not available in Fabric mode yet", nil
+	normalized := strings.ToLower(strings.TrimSpace(userQuery))
+	if normalized == "" {
+		return "Please provide a query about assets, audits, or priorities.", nil
+	}
+	if strings.Contains(normalized, "classify") || strings.Contains(normalized, "priority") {
+		return "To classify an asset, call POST /api/assets/classify with the five priority criteria. For manual adjustments, use POST /api/assets/update-priority.", nil
+	}
+	if strings.Contains(normalized, "audit") {
+		return "Audit operations are supported via POST /api/assets/schedule-audit and POST /api/assets/record-audit. Use an asset ID, date, scope, and result details.", nil
+	}
+	if strings.Contains(normalized, "retire") {
+		return "Asset retirement is done with POST /api/assets/retire and must include a retirement reason for auditability.", nil
+	}
+	return "This conversational assistant is a stub. Please use the available asset endpoints for classification, auditing, and retirement.", nil
 }
 
 func (fa *FabricAdapter) QueryAssetsByPriority(tier string) ([]*ClientAsset, error) {
@@ -253,285 +243,4 @@ func utilizationFromHistory(history []fabricclient.HistoryEntry) float64 {
 		u = 1
 	}
 	return math.Round(u*100) / 100
-}
-
-// SimulationAdapter wraps the in-process local prototype network.
-type SimulationAdapter struct {
-	net *network.Network
-}
-
-func NewSimulationAdapter(n *network.Network) *SimulationAdapter {
-	return &SimulationAdapter{net: n}
-}
-
-func (sa *SimulationAdapter) IssueAsset(deptID, name, category string, qty, threshold int) (string, string, time.Time, error) {
-	asset, tx, err := chaincode.IssueAsset(sa.net.Store, deptID, name, category, qty, threshold)
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	block, err := sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	var timestamp time.Time
-	for _, t := range block.Transactions {
-		if t.TxID == tx.TxID {
-			timestamp = t.Timestamp
-		}
-	}
-	return tx.TxID, asset.AssetID, timestamp, nil
-}
-
-func (sa *SimulationAdapter) ConsumeStock(deptID, assetID string, qty int, purpose string) (string, int, bool, error) {
-	asset, tx, replenishTriggered, err := chaincode.ConsumeStock(sa.net.Store, deptID, assetID, qty, purpose)
-	if err != nil {
-		return "", 0, false, err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", 0, false, err
-	}
-	return tx.TxID, asset.Qty, replenishTriggered, nil
-}
-
-func (sa *SimulationAdapter) TransferAsset(fromDept, toDept, assetID string, qty int) (string, int, int, error) {
-	srcAsset, targetAsset, tx, err := chaincode.TransferAsset(sa.net.Store, fromDept, toDept, assetID, qty)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	return tx.TxID, srcAsset.Qty, targetAsset.Qty, nil
-}
-
-func (sa *SimulationAdapter) GetAssetHistory(assetID string) ([]ClientHistoryEntry, error) {
-	history, err := sa.net.Ledger.GetAssetHistory(assetID)
-	if err != nil {
-		return nil, err
-	}
-	var res []ClientHistoryEntry
-	for _, tx := range history {
-		isDelete := tx.Type == "DELETE"
-
-		var value *ClientAsset
-		if tx.Type == "ISSUE" {
-			var asset worldstate.Asset
-			if err := json.Unmarshal(tx.Payload, &asset); err == nil {
-				value = toClientAsset(asset)
-			}
-		} else {
-			if asset, err := sa.net.Store.Get(assetID); err == nil {
-				value = toClientAsset(asset)
-				if tx.Type == "CONSUME" {
-					var payloadMap map[string]interface{}
-					if err := json.Unmarshal(tx.Payload, &payloadMap); err == nil {
-						if newQtyVal, ok := payloadMap["newQty"].(float64); ok {
-							value.Qty = int(newQtyVal)
-						}
-					}
-				} else if tx.Type == "TRANSFER" {
-					var payloadMap map[string]interface{}
-					if err := json.Unmarshal(tx.Payload, &payloadMap); err == nil {
-						if fromQtyVal, ok := payloadMap["fromQty"].(float64); ok {
-							value.Qty = int(fromQtyVal)
-						}
-					}
-				}
-			}
-		}
-
-		res = append(res, ClientHistoryEntry{
-			TxID:      tx.TxID,
-			Value:     value,
-			Timestamp: tx.Timestamp,
-			IsDelete:  isDelete,
-		})
-	}
-	return res, nil
-}
-
-func (sa *SimulationAdapter) ReadAsset(assetID string) (*ClientAsset, error) {
-	asset, err := sa.net.Store.Get(assetID)
-	if err != nil {
-		return nil, err
-	}
-	return toClientAsset(asset), nil
-}
-
-func (sa *SimulationAdapter) QueryAssetsByDept(deptID string) ([]*ClientAsset, error) {
-	assets, err := sa.net.Store.List(deptID)
-	if err != nil {
-		return nil, err
-	}
-	var res []*ClientAsset
-	for _, a := range assets {
-		res = append(res, toClientAsset(a))
-	}
-	return res, nil
-}
-
-func (sa *SimulationAdapter) RequestReplenishment(assetID string, qty int, urgency string) (string, error) {
-	tx, err := chaincode.RequestReplenishment(sa.net.Store, assetID, qty, urgency)
-	if err != nil {
-		return "", err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", err
-	}
-	return tx.TxID, nil
-}
-
-func (sa *SimulationAdapter) GetLedgerBlocks() ([]interface{}, error) {
-	blocks, err := sa.net.Ledger.GetBlocks()
-	if err != nil {
-		return nil, err
-	}
-	var res []interface{}
-	for _, b := range blocks {
-		res = append(res, b)
-	}
-	return res, nil
-}
-
-func (sa *SimulationAdapter) VerifyLedger() (bool, *int, error) {
-	valid, brokenIndex, err := sa.net.Ledger.VerifyChain()
-	if err != nil {
-		return false, nil, err
-	}
-	var broken *int
-	if brokenIndex != -1 {
-		idx := brokenIndex
-		broken = &idx
-	}
-	return valid, broken, nil
-}
-
-func (sa *SimulationAdapter) ClassifyPriority(assetID string, scores chaincode.PriorityScores) (string, string, float64, error) {
-	asset, tx, err := chaincode.ClassifyPriority(sa.net.Store, assetID, scores)
-	if err != nil {
-		return "", "", 0, err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", "", 0, err
-	}
-	return tx.TxID, asset.PriorityTier, asset.CriticalityScore, nil
-}
-
-func (sa *SimulationAdapter) UpdatePriorityTier(assetID, tier, reason string) (string, error) {
-	_, tx, err := chaincode.UpdatePriorityTier(sa.net.Store, assetID, tier, reason)
-	if err != nil {
-		return "", err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", err
-	}
-	return tx.TxID, nil
-}
-
-func (sa *SimulationAdapter) ScheduleAudit(assetID, auditDate, scope string) (string, error) {
-	tx, err := chaincode.ScheduleAudit(sa.net.Store, assetID, auditDate, scope)
-	if err != nil {
-		return "", err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", err
-	}
-	return tx.TxID, nil
-}
-
-func (sa *SimulationAdapter) RecordAuditResult(assetID, auditDate, result, notes string) (string, error) {
-	_, tx, err := chaincode.RecordAuditResult(sa.net.Store, assetID, auditDate, result, notes)
-	if err != nil {
-		return "", err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", err
-	}
-	return tx.TxID, nil
-}
-
-func (sa *SimulationAdapter) RetireAsset(assetID, reason string) (string, error) {
-	_, tx, err := chaincode.RetireAsset(sa.net.Store, assetID, reason)
-	if err != nil {
-		return "", err
-	}
-	_, err = sa.net.ProposeAndCommit(tx)
-	if err != nil {
-		return "", err
-	}
-	return tx.TxID, nil
-}
-
-func (sa *SimulationAdapter) AssistantQuery(userQuery string) (string, error) {
-	normalized := strings.ToLower(strings.TrimSpace(userQuery))
-	if normalized == "" {
-		return "Please provide a query about assets, audits, or priorities.", nil
-	}
-	if strings.Contains(normalized, "classify") || strings.Contains(normalized, "priority") {
-		return "To classify an asset, call POST /api/assets/classify with the five priority criteria. For manual adjustments, use POST /api/assets/update-priority.", nil
-	}
-	if strings.Contains(normalized, "audit") {
-		return "Audit operations are supported via POST /api/assets/schedule-audit and POST /api/assets/record-audit. Use an asset ID, date, scope, and result details.", nil
-	}
-	if strings.Contains(normalized, "retire") {
-		return "Asset retirement is done with POST /api/assets/retire and must include a retirement reason for auditability.", nil
-	}
-	return "This conversational assistant is a stub. Please use the available asset endpoints for classification, auditing, and retirement.", nil
-}
-
-func (sa *SimulationAdapter) QueryAssetsByPriority(tier string) ([]*ClientAsset, error) {
-	assets, err := sa.net.Store.List("")
-	if err != nil {
-		return nil, err
-	}
-	var res []*ClientAsset
-	for _, a := range assets {
-		if a.PriorityTier == tier {
-			res = append(res, toClientAsset(a))
-		}
-	}
-	return res, nil
-}
-
-func (sa *SimulationAdapter) ComputeUtilization(assetID string) (float64, error) {
-	history, err := sa.net.Ledger.GetAssetHistory(assetID)
-	if err != nil {
-		return 0, err
-	}
-	if len(history) == 0 {
-		return 0, nil
-	}
-	var initialQty int
-	var consumed float64
-	for _, tx := range history {
-		switch tx.Type {
-		case "ISSUE":
-			var asset worldstate.Asset
-			if err := json.Unmarshal(tx.Payload, &asset); err == nil {
-				initialQty = asset.Qty
-			}
-		case "CONSUME":
-			var m map[string]interface{}
-			if err := json.Unmarshal(tx.Payload, &m); err == nil {
-				if q, ok := m["qty"].(float64); ok {
-					consumed += q
-				}
-			}
-		}
-	}
-	if initialQty <= 0 {
-		return 0, nil
-	}
-	u := consumed / float64(initialQty)
-	if u > 1 {
-		u = 1
-	}
-	return math.Round(u*100) / 100, nil
 }

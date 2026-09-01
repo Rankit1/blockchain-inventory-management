@@ -49,12 +49,13 @@ export default function AssetDetail() {
             <table>
               <tbody>
                 <tr><td>Department</td><td>{asset.deptId || asset.department || '—'}</td></tr>
-                <tr><td>Stock</td><td>{asset.stock ?? asset.quantity ?? '—'}</td></tr>
-                <tr><td>Priority tier</td><td><PriorityBadge tier={asset.priorityTier || asset.priority} /></td></tr>
-                <tr><td>Replacement cost</td><td>{asset.replacementCost ?? '—'}</td></tr>
-                <tr><td>Lead time</td><td>{asset.leadTime ?? '—'}</td></tr>
-                <tr><td>Safety compliance</td><td>{String(asset.safetyCompliance ?? '—')}</td></tr>
-                <tr><td>Status</td><td>{asset.status || (asset.retired ? 'Retired' : 'Active')}</td></tr>
+                <tr><td>Category</td><td>{asset.category || '—'}</td></tr>
+                <tr><td>Stock / Threshold</td><td>{(asset.qty ?? asset.stock ?? asset.quantity ?? '—')} / {(asset.threshold ?? '—')}</td></tr>
+                <tr><td>Priority tier</td><td><PriorityBadge tier={asset.priorityTier || asset.priority} /> {asset.criticalityScore ? `(Score: ${asset.criticalityScore})` : ''}</td></tr>
+                <tr><td>Lifecycle status</td><td>{asset.lifecycleState || asset.status || (asset.retired ? 'Retired' : 'Active')}</td></tr>
+                <tr><td>Last audit date</td><td>{asset.lastAuditDate || '—'}</td></tr>
+                <tr><td>Warranty expiry</td><td>{asset.warrantyExpiry || '—'}</td></tr>
+                <tr><td>AMC expiry</td><td>{asset.amcExpiry || '—'}</td></tr>
               </tbody>
             </table>
           ) : <div className="empty">Loading…</div>}
@@ -79,9 +80,9 @@ export default function AssetDetail() {
           <tbody>
             {history.map((h, i) => (
               <tr key={h.txId || i}>
-                <td>{h.txId || '—'}</td>
-                <td>{h.type}</td>
-                <td>{h.deptId || h.department || '—'}</td>
+                <td title={h.txId}>{h.txId ? (h.txId.length > 16 ? h.txId.slice(0, 16) + '…' : h.txId) : '—'}</td>
+                <td>{h.type || (h.isDelete ? 'DELETE' : (h.value ? 'STATE_UPDATE' : 'TX'))}</td>
+                <td>{h.deptId || h.department || h.value?.deptId || '—'}</td>
                 <td>{h.timestamp || h.time || '—'}</td>
               </tr>
             ))}

@@ -4,9 +4,7 @@ go 1.25.6
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
-	github.com/google/uuid v1.6.0
 	github.com/hyperledger/fabric-gateway v1.11.0
-	go.etcd.io/bbolt v1.5.0
 	google.golang.org/grpc v1.80.0
 )
 

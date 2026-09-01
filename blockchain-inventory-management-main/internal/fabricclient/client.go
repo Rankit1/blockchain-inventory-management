@@ -137,84 +137,74 @@ func (f *FabricClient) Close() {
 	}
 }
 
+// Helper method to submit transaction proposals with automatic retry on MVCC / commit conflicts
+func (f *FabricClient) submitTransaction(txName string, args ...string) (string, []byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(150*attempt) * time.Millisecond)
+		}
+		proposal, err := f.contract.NewProposal(txName, client.WithArguments(args...))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		endorsed, err := proposal.Endorse()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		submitted, err := endorsed.Submit()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		status, err := submitted.Status()
+		if err != nil || !status.Successful {
+			lastErr = fmt.Errorf("transaction %s commit failed (code: %v, err: %v)", txName, status.Code, err)
+			continue
+		}
+		return submitted.TransactionID(), endorsed.Result(), nil
+	}
+	return "", nil, lastErr
+}
+
 // REST SDK wrappers
 func (f *FabricClient) IssueAsset(deptID, name, category string, qty, threshold int) (string, string, time.Time, error) {
 	// Generate UUID asset ID
 	assetID := fmt.Sprintf("asset-%d", time.Now().UnixNano())
 	
-	// We submit using SubmitTransaction
-	proposal, err := f.contract.NewProposal("IssueAsset", client.WithArguments(assetID, deptID, name, category, fmt.Sprintf("%d", qty), fmt.Sprintf("%d", threshold)))
+	txID, _, err := f.submitTransaction("IssueAsset", assetID, deptID, name, category, fmt.Sprintf("%d", qty), fmt.Sprintf("%d", threshold))
 	if err != nil {
 		return "", "", time.Time{}, err
-	}
-	
-	endorsedTx, err := proposal.Endorse()
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	
-	submittedTx, err := endorsedTx.Submit()
-	if err != nil {
-		return "", "", time.Time{}, err
-	}
-	
-	status, err := submittedTx.Status()
-	if err != nil || !status.Successful {
-		return "", "", time.Time{}, fmt.Errorf("transaction commit failed")
 	}
 
-	return submittedTx.TransactionID(), assetID, time.Now().UTC(), nil
+	return txID, assetID, time.Now().UTC(), nil
 }
 
 func (f *FabricClient) ConsumeStock(deptID, assetID string, qty int, purpose string) (string, int, bool, error) {
-	// Payload is JSON {"newQty": int, "replenishTriggered": bool}
 	var res struct {
 		NewQty             int  `json:"newQty"`
 		ReplenishTriggered bool `json:"replenishTriggered"`
 	}
 
-	// Submit via Proposal flow to obtain the transaction ID
-	proposal, err := f.contract.NewProposal("ConsumeStock", client.WithArguments(assetID, fmt.Sprintf("%d", qty), purpose))
+	txID, resultBytes, err := f.submitTransaction("ConsumeStock", assetID, fmt.Sprintf("%d", qty), purpose)
 	if err != nil {
 		return "", 0, false, err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", 0, false, err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", 0, false, err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", 0, false, fmt.Errorf("consume commit failed")
 	}
 
 	// Parse the response from the submitted tx execution
-	if err := json.Unmarshal(endorsed.Result(), &res); err != nil {
+	if err := json.Unmarshal(resultBytes, &res); err != nil {
 		return "", 0, false, fmt.Errorf("failed to unmarshal consume result: %w", err)
 	}
 
-	return submitted.TransactionID(), res.NewQty, res.ReplenishTriggered, nil
+	return txID, res.NewQty, res.ReplenishTriggered, nil
 }
 
 func (f *FabricClient) TransferAsset(fromDept, toDept, assetID string, qty int) (string, int, int, error) {
-	proposal, err := f.contract.NewProposal("TransferAsset", client.WithArguments(fromDept, toDept, assetID, fmt.Sprintf("%d", qty)))
+	txID, _, err := f.submitTransaction("TransferAsset", fromDept, toDept, assetID, fmt.Sprintf("%d", qty))
 	if err != nil {
 		return "", 0, 0, err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", 0, 0, fmt.Errorf("transfer commit failed")
 	}
 
 	// Retrieve quantities to return in response
@@ -235,7 +225,7 @@ func (f *FabricClient) TransferAsset(fromDept, toDept, assetID string, qty int) 
 		}
 	}
 
-	return submitted.TransactionID(), srcAsset.Qty, toQty, nil
+	return txID, srcAsset.Qty, toQty, nil
 }
 
 func (f *FabricClient) ReadAsset(assetID string) (*Asset, error) {
@@ -301,142 +291,54 @@ func (f *FabricClient) GetAssetHistory(assetID string) ([]HistoryEntry, error) {
 }
 
 func (f *FabricClient) RequestReplenishment(assetID string, qty int, urgency string) (string, error) {
-	proposal, err := f.contract.NewProposal("RequestReplenishment", client.WithArguments(assetID, fmt.Sprintf("%d", qty), urgency))
-	if err != nil {
-		return "", err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", fmt.Errorf("replenishment request commit failed")
-	}
-	return submitted.TransactionID(), nil
+	txID, _, err := f.submitTransaction("RequestReplenishment", assetID, fmt.Sprintf("%d", qty), urgency)
+	return txID, err
 }
 
 // ClassifyPriority submits a priority classification transaction.
 func (f *FabricClient) ClassifyPriority(assetID string, businessCriticality, replacementCost, replacementLeadTime, safetyComplianceImpact, redundancyAvailability int) (string, string, float64, error) {
-	proposal, err := f.contract.NewProposal("ClassifyPriority",
-		client.WithArguments(
-			assetID,
-			fmt.Sprintf("%d", businessCriticality),
-			fmt.Sprintf("%d", replacementCost),
-			fmt.Sprintf("%d", replacementLeadTime),
-			fmt.Sprintf("%d", safetyComplianceImpact),
-			fmt.Sprintf("%d", redundancyAvailability),
-		))
+	txID, resultBytes, err := f.submitTransaction("ClassifyPriority",
+		assetID,
+		fmt.Sprintf("%d", businessCriticality),
+		fmt.Sprintf("%d", replacementCost),
+		fmt.Sprintf("%d", replacementLeadTime),
+		fmt.Sprintf("%d", safetyComplianceImpact),
+		fmt.Sprintf("%d", redundancyAvailability),
+	)
 	if err != nil {
 		return "", "", 0, err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", "", 0, err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", "", 0, err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", "", 0, fmt.Errorf("classification commit failed")
 	}
 
 	var res struct {
 		PriorityTier    string  `json:"priorityTier"`
 		CriticalityScore float64 `json:"criticalityScore"`
 	}
-	if err := json.Unmarshal(endorsed.Result(), &res); err != nil {
-		return submitted.TransactionID(), "", 0, nil
+	if err := json.Unmarshal(resultBytes, &res); err != nil {
+		return txID, "", 0, nil
 	}
-	return submitted.TransactionID(), res.PriorityTier, res.CriticalityScore, nil
+	return txID, res.PriorityTier, res.CriticalityScore, nil
 }
 
 // UpdatePriorityTier submits a manual priority override transaction.
 func (f *FabricClient) UpdatePriorityTier(assetID, tier, reason string) (string, error) {
-	proposal, err := f.contract.NewProposal("UpdatePriorityTier", client.WithArguments(assetID, tier, reason))
-	if err != nil {
-		return "", err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", fmt.Errorf("priority update commit failed")
-	}
-	return submitted.TransactionID(), nil
+	txID, _, err := f.submitTransaction("UpdatePriorityTier", assetID, tier, reason)
+	return txID, err
 }
 
 // ScheduleAudit submits an audit scheduling transaction.
 func (f *FabricClient) ScheduleAudit(assetID, auditDate, scope string) (string, error) {
-	proposal, err := f.contract.NewProposal("ScheduleAudit", client.WithArguments(assetID, auditDate, scope))
-	if err != nil {
-		return "", err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", fmt.Errorf("audit schedule commit failed")
-	}
-	return submitted.TransactionID(), nil
+	txID, _, err := f.submitTransaction("ScheduleAudit", assetID, auditDate, scope)
+	return txID, err
 }
 
 // RecordAuditResult submits an audit result transaction.
 func (f *FabricClient) RecordAuditResult(assetID, auditDate, result, notes string) (string, error) {
-	proposal, err := f.contract.NewProposal("RecordAuditResult", client.WithArguments(assetID, auditDate, result, notes))
-	if err != nil {
-		return "", err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", fmt.Errorf("audit result commit failed")
-	}
-	return submitted.TransactionID(), nil
+	txID, _, err := f.submitTransaction("RecordAuditResult", assetID, auditDate, result, notes)
+	return txID, err
 }
 
 // RetireAsset submits an asset retirement transaction.
 func (f *FabricClient) RetireAsset(assetID, reason string) (string, error) {
-	proposal, err := f.contract.NewProposal("RetireAsset", client.WithArguments(assetID, reason))
-	if err != nil {
-		return "", err
-	}
-	endorsed, err := proposal.Endorse()
-	if err != nil {
-		return "", err
-	}
-	submitted, err := endorsed.Submit()
-	if err != nil {
-		return "", err
-	}
-	status, err := submitted.Status()
-	if err != nil || !status.Successful {
-		return "", fmt.Errorf("retirement commit failed")
-	}
-	return submitted.TransactionID(), nil
+	txID, _, err := f.submitTransaction("RetireAsset", assetID, reason)
+	return txID, err
 }

@@ -8,8 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"inventory-chain/internal/chaincode"
-	"inventory-chain/internal/worldstate"
+	"inventory-chain/internal/genai"
 )
 
 type Handlers struct {
@@ -171,6 +170,12 @@ func (h *Handlers) TransferAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.normalize()
+
+	if req.FromDept == "" && req.AssetID != "" {
+		if asset, err := h.client.ReadAsset(req.AssetID); err == nil && asset != nil {
+			req.FromDept = asset.DeptID
+		}
+	}
 
 	txID, fromQty, toQty, err := h.client.TransferAsset(req.FromDept, req.ToDept, req.AssetID, req.Qty)
 	if err != nil {
@@ -366,7 +371,7 @@ func (h *Handlers) ClassifyAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	req.normalize()
 
-	scores := chaincode.PriorityScores{
+	scores := genai.PriorityScores{
 		BusinessCriticality:    req.BusinessCriticality,
 		ReplacementCost:        req.ReplacementCost,
 		ReplacementLeadTime:    req.ReplacementLeadTime,
@@ -578,7 +583,7 @@ func (h *Handlers) UtilizationReport(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			u = 0
 		}
-		idle := u < idleThreshold && a.LifecycleState != worldstate.LifecycleRetired
+		idle := u < idleThreshold && a.LifecycleState != genai.LifecycleRetired
 		items = append(items, UtilizationItem{
 			AssetID:         a.AssetID,
 			Name:            a.Name,
@@ -653,11 +658,11 @@ func (h *Handlers) ComplianceReport(w http.ResponseWriter, r *http.Request) {
 		}
 		state := a.LifecycleState
 		if state == "" {
-			state = worldstate.LifecycleActive
+			state = genai.LifecycleActive
 		}
 		summary.ByLifecycleState[state]++
 
-		if state == worldstate.LifecycleRetired {
+		if state == genai.LifecycleRetired {
 			continue
 		}
 

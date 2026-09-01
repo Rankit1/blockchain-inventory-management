@@ -48,7 +48,7 @@ export default function Assets() {
       <div className="card">
         <table>
           <thead>
-            <tr><th>ID</th><th>Name</th><th>Dept</th><th>Stock</th><th>Tier</th><th>Status</th></tr>
+            <tr><th>ID</th><th>Name</th><th>Dept</th><th>Category</th><th>Stock</th><th>Tier</th><th>Status</th></tr>
           </thead>
           <tbody>
             {assets.map((a) => (
@@ -56,9 +56,10 @@ export default function Assets() {
                 <td><Link to={`/assets/${a.id || a.assetId}`}>{a.id || a.assetId}</Link></td>
                 <td style={{ fontFamily: 'var(--font-body)' }}>{a.name || '—'}</td>
                 <td>{a.deptId || a.department || '—'}</td>
-                <td>{a.stock ?? a.quantity ?? '—'}</td>
+                <td>{a.category || '—'}</td>
+                <td>{a.qty ?? a.stock ?? a.quantity ?? '—'}</td>
                 <td><PriorityBadge tier={a.priorityTier || a.priority} /></td>
-                <td>{a.status || a.retired ? 'Retired' : 'Active'}</td>
+                <td>{a.lifecycleState || a.status || (a.retired ? 'Retired' : 'Active')}</td>
               </tr>
             ))}
             {!loading && assets.length === 0 && (

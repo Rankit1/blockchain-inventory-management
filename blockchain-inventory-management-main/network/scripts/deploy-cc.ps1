@@ -1,3 +1,8 @@
+param(
+    [string]$Version = "1.0",
+    [int]$Sequence = 1
+)
+
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -5,7 +10,7 @@ Push-Location "$scriptDir/.."
 
 try {
     Write-Host "========================================================="
-    Write-Host "Packaging and Deploying assetcc Go Chaincode"
+    Write-Host "Packaging and Deploying assetcc Go Chaincode (Version: $Version, Sequence: $Sequence)"
     Write-Host "========================================================="
 
     # 1. Package
@@ -13,7 +18,7 @@ try {
     docker exec cli peer lifecycle chaincode package assetcc.tar.gz `
       --path /opt/gopath/src/github.com/hyperledger/fabric/peer/chaincode/assetcc `
       --lang golang `
-      --label assetcc_1.0
+      --label "assetcc_$Version"
 
     # 2. Install on Lab peer
     Write-Host "Installing on peer0.lab..."
@@ -42,9 +47,9 @@ try {
       -o orderer.inventory.com:7050 `
       --channelID inventorychannel `
       --name assetcc `
-      --version 1.0 `
+      --version "$Version" `
       --package-id "$packageId" `
-      --sequence 1 `
+      --sequence $Sequence `
       --tls `
       --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/inventory.com/orderers/orderer.inventory.com/tls/ca.crt
 
@@ -54,8 +59,8 @@ try {
       -o orderer.inventory.com:7050 `
       --channelID inventorychannel `
       --name assetcc `
-      --version 1.0 `
-      --sequence 1 `
+      --version "$Version" `
+      --sequence $Sequence `
       --tls `
       --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/inventory.com/orderers/orderer.inventory.com/tls/ca.crt `
       --peerAddresses peer0.lab.inventory.com:7051 `
