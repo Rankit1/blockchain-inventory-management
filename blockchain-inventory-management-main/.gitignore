@@ -1,6 +1,10 @@
 # Local database storage
 data/
 
+# Local secrets / API keys
+.env
+.env.*
+
 # Binaries
 *.exe
 *.test
