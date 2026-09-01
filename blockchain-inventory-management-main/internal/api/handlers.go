@@ -209,16 +209,15 @@ func (h *Handlers) GetAssetHistory(w http.ResponseWriter, r *http.Request) {
 
 	var txs []HistoryTxResponse
 	for i, entry := range history {
-		txType := "MUTATION"
-		if i == 0 {
-			txType = "ISSUE"
-		} else if entry.IsDelete {
-			txType = "DELETE"
-		} else {
-			// If it's the second transaction in the Laptop demo history, it represents stock CONSUME.
-			// Let's set it to CONSUME to match exactly.
-			txType = "CONSUME"
+		// Fabric's GetHistoryForKey returns newest-first and does not expose which
+		// chaincode function was invoked, so the type is inferred from what actually
+		// changed between this entry and the next-older one.
+		var prev *ClientAsset
+		if i+1 < len(history) {
+			prev = history[i+1].Value
 		}
+		isOldest := i == len(history)-1
+		txType := inferHistoryType(entry, prev, isOldest)
 
 		deptID := ""
 		var payload []byte
@@ -240,6 +239,35 @@ func (h *Handlers) GetAssetHistory(w http.ResponseWriter, r *http.Request) {
 		txs = []HistoryTxResponse{}
 	}
 	writeJSONResponse(w, http.StatusOK, txs)
+}
+
+// inferHistoryType derives a human-readable transaction type by diffing an
+// asset snapshot against the state it replaced, since Fabric's key history
+// only exposes state values, not the invoked function name.
+func inferHistoryType(entry ClientHistoryEntry, prev *ClientAsset, isOldest bool) string {
+	if entry.IsDelete {
+		return "DELETE"
+	}
+	if isOldest || prev == nil || entry.Value == nil {
+		return "ISSUE"
+	}
+	v := entry.Value
+	switch {
+	case v.LifecycleState == genai.LifecycleRetired && prev.LifecycleState != genai.LifecycleRetired:
+		return "RETIRE"
+	case v.Qty < prev.Qty:
+		// Both ConsumeStock and the source side of TransferAsset decrement Qty;
+		// Fabric's history alone can't tell them apart.
+		return "STOCK_DECREASE"
+	case v.LastAuditDate != prev.LastAuditDate:
+		return "AUDIT"
+	case v.PriorityTier != prev.PriorityTier || v.CriticalityScore != prev.CriticalityScore:
+		return "CLASSIFY"
+	case v.WarrantyExpiry != prev.WarrantyExpiry || v.AMCExpiry != prev.AMCExpiry:
+		return "DOCUMENT_UPDATE"
+	default:
+		return "UPDATE"
+	}
 }
 
 // 5. GET /api/assets/{id}

@@ -115,3 +115,31 @@ func TestIssueAssetAcceptsCamelCasePayload(t *testing.T) {
 		t.Fatalf("expected threshold to be parsed, got %d", client.issuedThreshold)
 	}
 }
+
+func TestInferHistoryType(t *testing.T) {
+	base := &ClientAsset{Qty: 5, PriorityTier: "P2", LifecycleState: "ACTIVE"}
+
+	cases := []struct {
+		name     string
+		entry    ClientHistoryEntry
+		prev     *ClientAsset
+		isOldest bool
+		want     string
+	}{
+		{"oldest is issue", ClientHistoryEntry{Value: base}, nil, true, "ISSUE"},
+		{"deleted", ClientHistoryEntry{IsDelete: true}, base, false, "DELETE"},
+		{"qty dropped", ClientHistoryEntry{Value: &ClientAsset{Qty: 3, PriorityTier: "P2"}}, base, false, "STOCK_DECREASE"},
+		{"retired", ClientHistoryEntry{Value: &ClientAsset{Qty: 5, LifecycleState: "RETIRED"}}, base, false, "RETIRE"},
+		{"tier changed", ClientHistoryEntry{Value: &ClientAsset{Qty: 5, PriorityTier: "P1", LifecycleState: "ACTIVE"}}, base, false, "CLASSIFY"},
+		{"audit recorded", ClientHistoryEntry{Value: &ClientAsset{Qty: 5, PriorityTier: "P2", LifecycleState: "ACTIVE", LastAuditDate: "2026-01-01"}}, base, false, "AUDIT"},
+		{"no material change", ClientHistoryEntry{Value: &ClientAsset{Qty: 5, PriorityTier: "P2", LifecycleState: "ACTIVE"}}, base, false, "UPDATE"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := inferHistoryType(tc.entry, tc.prev, tc.isOldest)
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
