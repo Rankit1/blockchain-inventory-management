@@ -98,7 +98,7 @@ func (d *DocumentAgent) scan() {
 				log.Printf("DocumentAgent: failed to attach warranty for %s: %v", a.AssetID, err)
 			}
 			// Optionally use LLM to summarize and enrich reclassification notes
-			scores := scorePriority(a.Name, a.Category)
+			scores := ScorePriority(a.Name, a.Category)
 			mp2 := d.Models
 			if mp2 == nil {
 				mp2 = GetGlobalModelProvider()
@@ -108,8 +108,8 @@ func (d *DocumentAgent) scan() {
 				// Record the summary as an audit result as well
 				_, _ = d.Driver.RecordAuditResult(a.AssetID, time.Now().UTC().Format("2006-01-02"), "DOC_SUMMARY", summary)
 			}
-			if tx2, _, _, err := d.Driver.ClassifyPriority(a.AssetID, scores); err == nil {
-				log.Printf("DocumentAgent: reclassified %s -> tx %s", a.AssetID, tx2)
+			if txID, _, _, err := d.Driver.ClassifyPriority(a.AssetID, scores); err == nil {
+				log.Printf("DocumentAgent: reclassified %s -> tx %s", a.AssetID, txID)
 			} else {
 				log.Printf("DocumentAgent: failed to reclassify %s: %v", a.AssetID, err)
 			}

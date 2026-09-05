@@ -68,3 +68,28 @@ func (h *Handlers) AgentControl(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+// GetAgentControl returns the current state of runtime agents and active providers.
+func (h *Handlers) GetAgentControl(w http.ResponseWriter, r *http.Request) {
+	mp := genai.GetGlobalModelProvider()
+	llmName := "dummy"
+	ocrName := "dummy"
+	if mp != nil {
+		if mp.LLMName != "" {
+			llmName = mp.LLMName
+		}
+		if mp.OCRName != "" {
+			ocrName = mp.OCRName
+		}
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"llmProvider": llmName,
+		"ocrProvider": ocrName,
+		"agents": map[string]bool{
+			"genai":      true,
+			"predictive": true,
+			"vision":     true,
+			"document":   true,
+		},
+	})
+}

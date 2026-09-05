@@ -96,7 +96,7 @@ func (g *GenAIService) scanAndClassify() {
 // criteria, falling back to a deterministic heuristic if no LLM is configured
 // or the call fails, then submits the result via the AutomationDriver.
 func (g *GenAIService) classify(a fabricclient.Asset) {
-	scores := scorePriority(a.Name, a.Category)
+	scores := ScorePriority(a.Name, a.Category)
 
 	txID, tier, score, err := g.Driver.ClassifyPriority(a.AssetID, scores)
 	if err != nil {
@@ -106,9 +106,9 @@ func (g *GenAIService) classify(a fabricclient.Asset) {
 	log.Printf("GenAIService: classified asset %s -> tx %s (tier=%s score=%.2f)", a.AssetID, txID, tier, score)
 }
 
-// scorePriority runs the priority classification LLM call, falling back to a
+// ScorePriority runs the priority classification LLM call, falling back to a
 // deterministic heuristic if no LLM is configured or the call errors.
-func scorePriority(assetName, category string) PriorityScores {
+func ScorePriority(assetName, category string) PriorityScores {
 	mp := GetGlobalModelProvider()
 	if mp != nil && mp.LLM != nil {
 		if scores, err := mp.LLM.ScorePriority(assetName, category); err == nil {

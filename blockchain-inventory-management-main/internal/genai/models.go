@@ -17,13 +17,15 @@ type LLMModel interface {
 
 // ModelProvider groups available models for agents.
 type ModelProvider struct {
-	OCR OCRModel
-	LLM LLMModel
+	OCRName string
+	LLMName string
+	OCR     OCRModel
+	LLM     LLMModel
 }
 
 // DefaultModelProvider returns stub implementations suitable for testing.
 func DefaultModelProvider() *ModelProvider {
-	return &ModelProvider{OCR: &DummyOCR{}, LLM: &DummyLLM{}}
+	return &ModelProvider{OCRName: "dummy", LLMName: "dummy", OCR: &DummyOCR{}, LLM: &DummyLLM{}}
 }
 
 var globalModelProvider = DefaultModelProvider()

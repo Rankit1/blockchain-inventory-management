@@ -63,6 +63,7 @@ func SetupRouter(h *Handlers) *chi.Mux {
 		})
 		// Admin APIs for runtime control of GenAI agents and models
 		r.Route("/admin", func(r chi.Router) {
+			r.With(RequireRoles(RoleITAdmin)).Get("/agents/control", h.GetAgentControl)
 			r.With(RequireRoles(RoleITAdmin)).Post("/agents/control", h.AgentControl)
 		})
 		r.Route("/ledger", func(r chi.Router) {

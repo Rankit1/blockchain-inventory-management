@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../api/client.js';
 import { useRole } from '../api/RoleContext.jsx';
 import { PageHead, Notice, Field } from '../components/UI.jsx';
@@ -21,6 +21,20 @@ export default function Admin() {
   const [ocrProvider, setOcrProvider] = useState('dummy');
   const [providerNotice, setProviderNotice] = useState('');
   const [providerError, setProviderError] = useState('');
+
+  useEffect(() => {
+    async function loadStatus() {
+      try {
+        const res = await api.getAgentControl(role);
+        if (res.llmProvider) setLlmProvider(res.llmProvider);
+        if (res.ocrProvider) setOcrProvider(res.ocrProvider);
+        if (res.agents) setEnabled((prev) => ({ ...prev, ...res.agents }));
+      } catch (err) {
+        // Non-fatal if role not yet admin
+      }
+    }
+    loadStatus();
+  }, [role]);
 
   async function toggle(key) {
     setError(''); setNotice(''); setBusyKey(key);

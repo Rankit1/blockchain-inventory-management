@@ -48,6 +48,7 @@ export const api = {
   // Assistant / Admin
   assistantQuery: (payload, role) => request('/api/assistant/query', { method: 'POST', body: payload, role }),
   agentControl: (payload, role) => request('/api/admin/agents/control', { method: 'POST', body: payload, role }),
+  getAgentControl: (role) => request('/api/admin/agents/control', { role }),
 
   // Ledger
   ledgerBlocks: () => request('/api/ledger/blocks'),

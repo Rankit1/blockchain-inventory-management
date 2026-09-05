@@ -21,11 +21,15 @@ type PriorityScores struct {
 	RedundancyAvailability int `json:"redundancyAvailability"`
 }
 
-func (s PriorityScores) valid() bool {
+func (s PriorityScores) Valid() bool {
 	inRange := func(v int) bool { return v >= 1 && v <= 5 }
 	return inRange(s.BusinessCriticality) && inRange(s.ReplacementCost) &&
 		inRange(s.ReplacementLeadTime) && inRange(s.SafetyComplianceImpact) &&
 		inRange(s.RedundancyAvailability)
+}
+
+func (s PriorityScores) valid() bool {
+	return s.Valid()
 }
 
 func (s PriorityScores) clamp() PriorityScores {

@@ -12,12 +12,35 @@ import (
 	"inventory-chain/internal/genai"
 )
 
+func loadDotEnv(filepath string) {
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			k := strings.TrimSpace(parts[0])
+			v := strings.TrimSpace(parts[1])
+			if os.Getenv(k) == "" {
+				os.Setenv(k, v)
+			}
+		}
+	}
+}
+
 func agentEnabled(envVar string) bool {
 	v := strings.ToLower(os.Getenv(envVar))
 	return v == "" || v == "true"
 }
 
 func main() {
+	loadDotEnv(".env")
 	log.Println("Starting Inventory Management System...")
 
 	cryptoDir := os.Getenv("FABRIC_CRYPTO_DIR")

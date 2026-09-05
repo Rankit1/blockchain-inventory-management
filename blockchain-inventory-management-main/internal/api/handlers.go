@@ -407,6 +407,15 @@ func (h *Handlers) ClassifyAsset(w http.ResponseWriter, r *http.Request) {
 		RedundancyAvailability: req.RedundancyAvailability,
 	}
 
+	if !scores.Valid() {
+		asset, err := h.client.ReadAsset(req.AssetID)
+		if err != nil {
+			writeJSONError(w, fmt.Sprintf("asset %s not found: %v", req.AssetID, err), http.StatusNotFound)
+			return
+		}
+		scores = genai.ScorePriority(asset.Name, asset.Category)
+	}
+
 	txID, tier, score, err := h.client.ClassifyPriority(req.AssetID, scores)
 	if err != nil {
 		writeJSONError(w, err.Error(), http.StatusBadRequest)
